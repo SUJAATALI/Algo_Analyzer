@@ -45,7 +45,7 @@
     "lucide-react": "^0.525.0",
     "nanoid": "^5.1.5",
     "neo4j-driver": "^5.28.2",
-    "next": "15.4.3",
+    "next": "15.4.10",
     "next-auth": "^4.24.11",
     "react": "19.1.0",
     "react-dom": "19.1.0",
