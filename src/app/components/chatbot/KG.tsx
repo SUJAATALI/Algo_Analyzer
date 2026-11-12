@@ -1,3 +1,5 @@
+// RAG (Retrieval-Augmented Generation) is a smart way AI works: it first finds relevant information from a knowledge base (like this graph of algorithms and concepts) and then uses that info to create helpful answers. This Knowledge Graph acts as the brain's memory, letting the chatbot give accurate, context-aware responses to your questions.
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -206,14 +208,36 @@ const Graph = ({ data, onNodeClick }: { data: GraphData, onNodeClick: (node: Sim
       {graphData.nodes.map((node) => (
         <GraphNode key={node.id} node={node} onClick={onNodeClick} />
       ))}
-      <Line
-        points={graphData.links.map(link => [
-            new THREE.Vector3(link.source.x, link.source.y, link.source.z),
-            new THREE.Vector3(link.target.x, link.target.y, link.target.z)
-        ]).flat() as any}
-        color="rgba(255, 255, 255, 0.2)"
-        lineWidth={0.5}
-      />
+      {graphData.links.map((link, index) => {
+        const { source, target } = link;
+        const hasValidPositions =
+          typeof source.x === "number" &&
+          typeof source.y === "number" &&
+          typeof source.z === "number" &&
+          typeof target.x === "number" &&
+          typeof target.y === "number" &&
+          typeof target.z === "number" &&
+          Number.isFinite(source.x) &&
+          Number.isFinite(source.y) &&
+          Number.isFinite(source.z) &&
+          Number.isFinite(target.x) &&
+          Number.isFinite(target.y) &&
+          Number.isFinite(target.z);
+
+        if (!hasValidPositions) return null;
+
+        return (
+          <Line
+            key={`${source.id}-${target.id}-${index}`}
+            points={[
+              new THREE.Vector3(source.x, source.y, source.z),
+              new THREE.Vector3(target.x, target.y, target.z),
+            ]}
+            color="rgba(255, 255, 255, 0.2)"
+            lineWidth={0.5}
+          />
+        );
+      })}
       <TrackballControls noZoom={false} noPan={true} rotateSpeed={3} />
     </>
   );
@@ -232,9 +256,13 @@ export default function KnowledgeGraph() {
     const fetchGraphData = async () => {
       try {
         const response = await fetch("/api/graph");
-        if (!response.ok) throw new Error(`Failed to fetch graph data: ${response.statusText}`);
-        const data: GraphData = await response.json();
-        setGraphData(data);
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || `Failed to fetch graph data: ${response.statusText}`);
+        }
+
+        setGraphData(data as GraphData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An unexpected error occurred.");
       } finally {
@@ -272,26 +300,36 @@ export default function KnowledgeGraph() {
       )}
       {!isLoading && !error && graphData && (
         <>
-            {/* UPDATED: Camera position adjusted to better fit the vertical layout */}
-            <Canvas camera={{ position: [0, 0, 300], fov: 50 }}>
-                <color attach="background" args={['#05050a']} />
-                <ambientLight intensity={0.1} />
-                <pointLight position={[100, 100, 100]} intensity={0.5} color="white" />
-                <pointLight position={[-100, -100, -50]} intensity={0.7} color="#f472b6" />
+            {graphData.nodes.length === 0 ? (
+              <Center h="100%" p={4}>
+                <Alert status="info" variant="subtle" borderRadius="md" bg="blue.900" color="white">
+                  <AlertIcon color="white" /><Box><AlertTitle>No Graph Data</AlertTitle><AlertDescription>Upload and analyze problems to populate the knowledge graph.</AlertDescription></Box>
+                </Alert>
+              </Center>
+            ) : (
+              <>
+                {/* UPDATED: Camera position adjusted to better fit the vertical layout */}
+                <Canvas camera={{ position: [0, 0, 300], fov: 50 }}>
+                    <color attach="background" args={['#05050a']} />
+                    <ambientLight intensity={0.1} />
+                    <pointLight position={[100, 100, 100]} intensity={0.5} color="white" />
+                    <pointLight position={[-100, -100, -50]} intensity={0.7} color="#f472b6" />
 
-                <Graph data={graphData} onNodeClick={handleNodeClick} />
-                <CameraAnimator target={cameraTarget} />
-                
-                <EffectComposer>
-                    <Bloom luminanceThreshold={0.1} luminanceSmoothing={0.9} height={400} intensity={0.9} />
-                    <Vignette eskil={false} offset={0.1} darkness={1.1} />
-                </EffectComposer>
-            </Canvas>
-            <GraphLegend isOpen={isLegendVisible} onToggle={toggleLegend} />
-            <InfoSidebar node={selectedNode} onClose={closeSidebar} />
-            <ChakraText fontSize="xs" color="gray.500" position="absolute" bottom={4} right={4}>
-                Left-click & drag to rotate. Scroll to zoom.
-            </ChakraText>
+                    <Graph data={graphData} onNodeClick={handleNodeClick} />
+                    <CameraAnimator target={cameraTarget} />
+                    
+                    <EffectComposer>
+                        <Bloom luminanceThreshold={0.1} luminanceSmoothing={0.9} height={400} intensity={0.9} />
+                        <Vignette eskil={false} offset={0.1} darkness={1.1} />
+                    </EffectComposer>
+                </Canvas>
+                <GraphLegend isOpen={isLegendVisible} onToggle={toggleLegend} />
+                <InfoSidebar node={selectedNode} onClose={closeSidebar} />
+                <ChakraText fontSize="xs" color="gray.500" position="absolute" bottom={4} right={4}>
+                    Left-click & drag to rotate. Scroll to zoom.
+                </ChakraText>
+              </>
+            )}
         </>
       )}
     </Box>
