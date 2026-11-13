@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import driver from "@/lib/neo4j";
 import { z } from "zod";
-import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
-
-const embeddingsModel = new HuggingFaceInferenceEmbeddings({
-  apiKey: process.env.HUGGINGFACE_API_KEY!,
-  model: "sentence-transformers/all-MiniLM-L6-v2"
-});
+import { embedDocuments } from "@/lib/embeddings";
 
 const isError = (e: unknown): e is Error =>
   typeof e === "object" && e !== null && "message" in e;
@@ -68,8 +63,17 @@ export async function POST(req: NextRequest) {
       sanitizedPayload.problem.domain,
     ];
 
-    const embeddings = await embeddingsModel.embedDocuments(textsToEmbed);
-    const [problemEmbedding, approachEmbedding, conceptEmbedding] = embeddings;
+    // Embeddings only power chat search. If the embedding provider fails (quota,
+    // outage, bad key), still write the graph so the KG page works; the embedding
+    // properties are left untouched and can be filled in by a later submission.
+    let problemEmbedding: number[] | null = null;
+    let approachEmbedding: number[] | null = null;
+    let conceptEmbedding: number[] | null = null;
+    try {
+      [problemEmbedding, approachEmbedding, conceptEmbedding] = await embedDocuments(textsToEmbed);
+    } catch (embeddingError) {
+      console.error("Embedding failed; writing graph without embeddings:", embeddingError);
+    }
 
     const finalPayload = {
         userId: sanitizedPayload.userId,
@@ -88,13 +92,13 @@ export async function POST(req: NextRequest) {
 
       MERGE (p:Problem {url: $problem.url})
         ON CREATE SET p.name = $problem.name
-      SET p.embedding = $problem.embedding
+      SET p.embedding = coalesce($problem.embedding, p.embedding)
 
       MERGE (a:Approach {name: $problem.approachName})
-      SET a.embedding = $approachEmbedding
+      SET a.embedding = coalesce($approachEmbedding, a.embedding)
 
       MERGE (c:Concept {name: $problem.domain})
-      SET c.embedding = $conceptEmbedding
+      SET c.embedding = coalesce($conceptEmbedding, c.embedding)
 
       // 2. Create the relationships that connect them for this specific submission.
       MERGE (u)-[:SUBMITTED]->(p)
