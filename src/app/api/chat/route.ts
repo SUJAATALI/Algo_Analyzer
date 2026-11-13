@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/authOptions"; // 👈 Import your auth options
 import driver from "@/lib/neo4j";
-import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { embedQuery } from "@/lib/embeddings";
 
-const embeddingsModel = new HuggingFaceInferenceEmbeddings({
-  apiKey: process.env.HUGGINGFACE_API_KEY!,
-  model: "sentence-transformers/all-MiniLM-L6-v2",
-});
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const chatModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
@@ -28,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A non-empty 'message' is required." }, { status: 400 });
     }
 
-    const queryEmbedding = await embeddingsModel.embedQuery(message);
+    const queryEmbedding = await embedQuery(message);
 
     const neo4jSession = driver.session();
     let retrievedContext = "";
